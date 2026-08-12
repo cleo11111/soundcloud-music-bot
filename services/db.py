@@ -177,6 +177,7 @@ def add_history_record(user_id: int, title: str, artist: str, platform: str = "S
     if not user_id:
         return
 
+    ensure_user_exists(user_id)
     u_hash = hash_user_id(user_id)
     now_iso = datetime.now().isoformat()
 
@@ -758,7 +759,15 @@ def get_bot_stats() -> dict:
     """Возвращает общую статистику бота из базы данных."""
     try:
         with _get_connection() as conn:
-            total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] or 0
+            total_users = conn.execute(
+                """
+                SELECT COUNT(DISTINCT user_hash) FROM (
+                    SELECT user_hash FROM users WHERE user_hash IS NOT NULL AND user_hash != ''
+                    UNION
+                    SELECT user_hash FROM history WHERE user_hash IS NOT NULL AND user_hash != ''
+                )
+                """
+            ).fetchone()[0] or 0
             premium_users = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium = 1 OR is_whitelisted = 1").fetchone()[0] or 0
             whitelisted_users = conn.execute("SELECT COUNT(*) FROM users WHERE is_whitelisted = 1").fetchone()[0] or 0
             total_downloads = conn.execute("SELECT COUNT(*) FROM history").fetchone()[0] or 0
