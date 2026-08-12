@@ -173,10 +173,10 @@ async def process_admin_send_reply(message: Message, state: FSMContext):
 from services.db import async_set_user_premium
 
 
-@router.message(Command("grant_premium"))
+@router.message(F.chat.type == "private", Command("grant_premium"))
 async def process_grant_premium_command(message: Message):
     """Админ-команда для ручной выдачи премиум подписки: /grant_premium USER_ID [дней]"""
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
     parts = message.text.strip().split()
@@ -201,10 +201,10 @@ async def process_grant_premium_command(message: Message):
         await message.answer("❌ Ошибка: USER_ID и количество дней должны быть числами.")
 
 
-@router.message(Command("revoke_premium"))
+@router.message(F.chat.type == "private", Command("revoke_premium"))
 async def process_revoke_premium_command(message: Message):
     """Админ-команда для снятия премиума и переключения на Бесплатный тариф: /revoke_premium [USER_ID]"""
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
     parts = message.text.strip().split()
@@ -214,11 +214,11 @@ async def process_revoke_premium_command(message: Message):
     await message.answer(f"✅ Для пользователя <code>{target_uid}</code> активирован <b>🆓 Бесплатный тариф</b>!", parse_mode="HTML")
 
 
-@router.message(Command("add_whitelist"))
-@router.message(Command("whitelist_add"))
+@router.message(F.chat.type == "private", Command("add_whitelist"))
+@router.message(F.chat.type == "private", Command("whitelist_add"))
 async def process_add_whitelist_command(message: Message):
     """Админ-команда для добавления пользователя в вечный WhiteList: /add_whitelist USER_ID"""
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
     parts = message.text.strip().split()
@@ -246,11 +246,11 @@ async def process_add_whitelist_command(message: Message):
         await message.answer("❌ Ошибка: USER_ID должен быть числом.")
 
 
-@router.message(Command("remove_whitelist"))
-@router.message(Command("whitelist_remove"))
+@router.message(F.chat.type == "private", Command("remove_whitelist"))
+@router.message(F.chat.type == "private", Command("whitelist_remove"))
 async def process_remove_whitelist_command(message: Message):
     """Админ-команда для удаления пользователя из WhiteList: /remove_whitelist USER_ID"""
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
     parts = message.text.strip().split()
@@ -270,10 +270,10 @@ async def process_remove_whitelist_command(message: Message):
 from services.downloader import finish_user_download
 
 
-@router.message(Command("reset_lock"))
+@router.message(F.chat.type == "private", Command("reset_lock"))
 async def process_reset_lock_command(message: Message):
     """Админ-команда для сброса зависшей блокировки скачивания: /reset_lock [USER_ID]"""
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
     parts = message.text.strip().split()
@@ -281,3 +281,24 @@ async def process_reset_lock_command(message: Message):
 
     finish_user_download(target_uid)
     await message.answer(f"🔓 Блокировка скачивания для пользователя <code>{target_uid}</code> успешно сброшена!", parse_mode="HTML")
+
+
+from services.db import async_get_bot_stats
+
+
+@router.message(F.chat.type == "private", Command("stats"))
+async def process_stats_command(message: Message):
+    """Админ-команда для отображения статистики бота: /stats"""
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
+        return
+
+    stats = await async_get_bot_stats()
+    stats_text = (
+        "📊 <b>Статистика бота</b>\n\n"
+        f"👥 <b>Всего пользователей:</b> {stats['total_users']}\n"
+        f"💎 <b>Премиум:</b> {stats['premium_users']}\n"
+        f"⭐ <b>WhiteList:</b> {stats['whitelisted_users']}\n"
+        f"🎵 <b>Всего скачиваний:</b> {stats['total_downloads']}"
+    )
+    await message.answer(stats_text, parse_mode="HTML")
+

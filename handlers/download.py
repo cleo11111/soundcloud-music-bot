@@ -42,15 +42,18 @@ def is_valid_soundcloud_url(url: str) -> bool:
         return False
 
 
-@router.message(F.text.startswith("http"))
-async def download(message: Message):
+import re
+
+
+async def _process_download_url(message: Message, url: str):
+    """Общий процессор скачивания одиночного трека по URL."""
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
-    url = message.text.strip()
 
     # Строго проверяем, что домен принадлежит SoundCloud
     if not is_valid_soundcloud_url(url):
-        await message.answer(get_text("only_soundcloud", lang))
+        if message.chat.type == "private":
+            await message.answer(get_text("only_soundcloud", lang))
         return
 
     # Плейлисты SoundCloud обрабатываются в inline_playlist.py
@@ -124,14 +127,14 @@ async def download(message: Message):
         )
         await async_increment_user_track_count(user_id)
 
-        # Удаляем сообщение пользователя со ссылкой
+        # Удаляем сообщение пользователю со ссылкой/командой
         try:
             await message.delete()
         except Exception:
             pass
 
-    except RuntimeError as re:
-        if "ERR_DISK_FULL" in str(re):
+    except RuntimeError as err_rt:
+        if "ERR_DISK_FULL" in str(err_rt):
             await message.answer(get_text("err_disk_full", lang))
         else:
             await message.answer(get_text("err_generic", lang))
@@ -169,3 +172,24 @@ async def download(message: Message):
             pass
         if result:
             cleanup_file(result.get("path"), result.get("cover_path"), result.get("thumb_path"))
+
+
+@router.message(F.text.startswith("🎶DL::"))
+async def download_from_inline(message: Message):
+    """Скачивание трека по клику на инлайн-результат."""
+    url = message.text[len("🎶DL::"):].strip()
+    await _process_download_url(message, url)
+
+
+@router.message(F.text.contains("soundcloud.com") | F.text.startswith("http") | F.caption.contains("soundcloud.com"))
+async def download(message: Message):
+    """Скачивание трека по прямой ссылке только в личных сообщениях (ЛС)."""
+    if message.chat.type != "private":
+        return
+
+    raw_text = message.text or message.caption or ""
+    match = re.search(r'https?://[^\s]+', raw_text)
+    if not match:
+        return
+    url = match.group(0).strip()
+    await _process_download_url(message, url)

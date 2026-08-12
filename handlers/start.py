@@ -9,6 +9,7 @@ from services.db import (
     async_set_user_language,
     async_get_user_premium_status,
     async_set_user_premium,
+    async_ensure_user_exists,
     hash_user_id,
 )
 from services.locales import get_text
@@ -59,6 +60,7 @@ def build_start_keyboard(lang: str) -> InlineKeyboardMarkup:
 async def start(message: Message):
     """Обработчик команды /start."""
     user_id = message.from_user.id
+    await async_ensure_user_exists(user_id)
     lang = await async_get_user_language(user_id)
     me = await message.bot.get_me()
     bot_username = me.username or "bot"

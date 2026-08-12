@@ -112,9 +112,9 @@ def format_page_text(query_text: str, tracks: list, page: int = 0):
     return text
 
 
-@router.message(F.text & ~F.text.startswith("http") & ~F.text.startswith("/"))
+@router.message(F.chat.type == "private", F.text & ~F.text.startswith("http") & ~F.text.startswith("/"))
 async def process_text_prompt(message: Message):
-    """Если пользователь пишет обычный текст — просим скинуть ссылку или воспользоваться кнопками."""
+    """Если пользователь пишет обычный текст в ЛС — просим скинуть ссылку или воспользоваться кнопками."""
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
     text = get_text("text_prompt", lang)
@@ -225,8 +225,8 @@ async def process_download_track(call: CallbackQuery):
             platform="SoundCloud",
         )
 
-    except RuntimeError as re:
-        if "ERR_DISK_FULL" in str(re):
+    except RuntimeError as err_rt:
+        if "ERR_DISK_FULL" in str(err_rt):
             await call.message.answer(get_text("err_disk_full", lang))
         else:
             await call.message.answer(get_text("err_generic", lang))

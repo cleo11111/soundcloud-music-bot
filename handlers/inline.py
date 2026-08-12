@@ -151,6 +151,28 @@ async def inline_search(query: InlineQuery):
     if not text or len(text) < 2 or text.startswith("/playlist"):
         return
 
+    # Если в инлайн-поиск вставили прямую ссылку — предлагаем 1 клик для отправки и скачивания
+    if text.startswith("http://") or text.startswith("https://") or "soundcloud.com" in text:
+        raw_url = query.query.strip()
+        if not (raw_url.startswith("http://") or raw_url.startswith("https://")):
+            raw_url = "https://" + raw_url
+        msg_content = f"🎶DL::{raw_url}"
+        await query.answer(
+            results=[
+                InlineQueryResultArticle(
+                    id="direct_link_inline",
+                    title="📥 Нажмите, чтобы скачать трек по ссылке",
+                    description=raw_url,
+                    input_message_content=InputTextMessageContent(
+                        message_text=msg_content
+                    )
+                )
+            ],
+            cache_time=1,
+            is_personal=False
+        )
+        return
+
     offset = int(query.offset) if query.offset else 0
 
     try:
