@@ -731,3 +731,55 @@ async def async_increment_user_playlist_count(user_id: int):
 
 async def async_set_user_premium(user_id: int, days: int = 30):
     await asyncio.to_thread(set_user_premium, user_id, days)
+
+
+def ensure_user_exists(user_id: int, lang_code: str = "ru"):
+    """Создаёт пользователя в таблице users, если его ещё нет."""
+    if not user_id:
+        return
+    u_hash = hash_user_id(user_id)
+    try:
+        with _get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO users (user_hash, language_code) VALUES (?, ?)",
+                (u_hash, lang_code),
+            )
+            conn.commit()
+    except Exception as e:
+        log_error(f"⚠️ [DB Error] Ошибка создания пользователя: {e}")
+
+
+async def async_ensure_user_exists(user_id: int, lang_code: str = "ru"):
+    """Асинхронная регистрация пользователя в БД."""
+    await asyncio.to_thread(ensure_user_exists, user_id, lang_code)
+
+
+def get_bot_stats() -> dict:
+    """Возвращает общую статистику бота из базы данных."""
+    try:
+        with _get_connection() as conn:
+            total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] or 0
+            premium_users = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium = 1 OR is_whitelisted = 1").fetchone()[0] or 0
+            whitelisted_users = conn.execute("SELECT COUNT(*) FROM users WHERE is_whitelisted = 1").fetchone()[0] or 0
+            total_downloads = conn.execute("SELECT COUNT(*) FROM history").fetchone()[0] or 0
+
+            return {
+                "total_users": total_users,
+                "premium_users": premium_users,
+                "whitelisted_users": whitelisted_users,
+                "total_downloads": total_downloads,
+            }
+    except Exception as e:
+        log_error(f"⚠️ [DB Error] Ошибка получения статистики бота: {e}")
+        return {
+            "total_users": 0,
+            "premium_users": 0,
+            "whitelisted_users": 0,
+            "total_downloads": 0,
+        }
+
+
+async def async_get_bot_stats() -> dict:
+    """Асинхронное получение статистики бота."""
+    return await asyncio.to_thread(get_bot_stats)
+
