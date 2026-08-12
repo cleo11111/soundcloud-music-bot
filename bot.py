@@ -72,9 +72,11 @@ async def main():
     dp.include_router(download_router)
 
     from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+    from aiogram.types import ErrorEvent
 
     @dp.error()
-    async def global_error_handler(event, exception):
+    async def global_error_handler(event: ErrorEvent):
+        exception = event.exception
         if isinstance(exception, TelegramForbiddenError):
             log_info("ℹ️ Игнорирование: пользователь заблокировал бота или остановил чат.")
             return True
