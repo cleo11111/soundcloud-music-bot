@@ -470,13 +470,6 @@ async def handle_playlist_direct_link(message: Message):
     """Обрабатывает прямую ссылку на плейлист SoundCloud."""
     raw_text = message.text or message.caption or ""
 
-    # В групповых чатах ссылка на плейлист скачивается ТОЛЬКО если упомянут бот (@bot_username)
-    if message.chat.type != "private":
-        me = await message.bot.get_me()
-        bot_username = (me.username or "").lower()
-        if not bot_username or f"@{bot_username}" not in raw_text.lower():
-            return
-
     match = re.search(r'https?://[^\s]+', raw_text)
     if not match:
         return

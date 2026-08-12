@@ -174,19 +174,9 @@ async def _process_download_url(message: Message, url: str):
             cleanup_file(result.get("path"), result.get("cover_path"), result.get("thumb_path"))
 
 
-@router.message(F.text.startswith("🎶DL::"))
-async def download_from_inline(message: Message):
-    """Скачивание трека по клику на инлайн-результат."""
-    url = message.text[len("🎶DL::"):].strip()
-    await _process_download_url(message, url)
-
-
 @router.message(F.text.contains("soundcloud.com") | F.text.startswith("http") | F.caption.contains("soundcloud.com"))
 async def download(message: Message):
-    """Скачивание трека по прямой ссылке только в личных сообщениях (ЛС)."""
-    if message.chat.type != "private":
-        return
-
+    """Скачивание трека по прямой ссылке SoundCloud (в любых чатах и ЛС)."""
     raw_text = message.text or message.caption or ""
     match = re.search(r'https?://[^\s]+', raw_text)
     if not match:
