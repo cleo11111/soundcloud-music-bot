@@ -1,0 +1,37 @@
+# Секреты и конфигурация
+.env*
+!.env.example
+
+# Базы данных SQLite и файлы журнала (WAL)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Директории загрузок и логов
+downloads/
+logs/
+
+# Кэш Python и виртуальные окружения
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+ENV/
+
+# Редакторы кода и IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Операционная система
+.DS_Store
+Thumbs.db
+
+# Тесты и типизация
+.pytest_cache/
+.mypy_cache/
