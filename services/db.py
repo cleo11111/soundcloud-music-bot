@@ -10,7 +10,7 @@ from services.logger import log_debug, log_info, log_error
 
 load_dotenv()
 
-DB_PATH = Path(__file__).resolve().parent.parent / "music_bot.db"
+DB_PATH = Path(os.getenv("DB_PATH", str(Path(__file__).resolve().parent.parent / "music_bot.db")))
 SECRET_SALT = os.getenv("SECRET_SALT")
 if not SECRET_SALT:
     raise RuntimeError("🚨 Критическая ошибка безопасности: переменная SECRET_SALT отсутствует в файле .env!")
