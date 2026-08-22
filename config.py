@@ -11,7 +11,7 @@ TRIBUTE_API_KEY = os.getenv("TRIBUTE_API_KEY", "")
 
 
 def verify_config():
-    """Проверяет наличие обязательных секретов при старте приложения (Fail-Fast)."""
+    """Checks that all required secrets are set"""
     missing = []
     if not BOT_TOKEN:
         missing.append("BOT_TOKEN")
