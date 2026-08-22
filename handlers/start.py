@@ -1,6 +1,7 @@
 from datetime import datetime
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import ADMIN_ID
@@ -57,8 +58,13 @@ def build_start_keyboard(lang: str) -> InlineKeyboardMarkup:
 
 
 @router.message(CommandStart())
-async def start(message: Message):
+async def start(message: Message, state: FSMContext):
     """Обработчик команды /start."""
+    # Сбрасываем любое активное состояние FSM (например, ожидание сообщения
+    # для поддержки), чтобы /start всегда возвращал пользователя в чистое
+    # состояние, а не "застревал" в предыдущем сценарии.
+    await state.clear()
+
     user_id = message.from_user.id
     await async_ensure_user_exists(user_id)
     lang = await async_get_user_language(user_id)
@@ -70,8 +76,12 @@ async def start(message: Message):
 
 
 @router.message(Command("help"))
-async def process_help_command(message: Message):
+async def process_help_command(message: Message, state: FSMContext):
     """Обработчик команды /help — выводит справку по поиску и командам."""
+    # Аналогично /start — сбрасываем FSM-состояние, чтобы /help тоже
+    # выводил пользователя из "застрявших" сценариев (например, поддержки).
+    await state.clear()
+
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
     me = await message.bot.get_me()
@@ -147,7 +157,6 @@ async def process_check_tribute_pay(call: CallbackQuery):
     is_paid = await async_check_tribute_payment(user_id)
 
     if is_paid:
-        # Активируем подписку на 30 дней
         await async_set_user_premium(user_id, days=30)
         u_hash = hash_user_id(user_id)[:8]
 
@@ -162,7 +171,6 @@ async def process_check_tribute_pay(call: CallbackQuery):
             parse_mode="HTML",
         )
 
-        # Уведомляем администратора о поступлении платежа
         if ADMIN_ID:
             try:
                 await call.bot.send_message(
@@ -173,7 +181,6 @@ async def process_check_tribute_pay(call: CallbackQuery):
             except Exception:
                 pass
     else:
-        # Если авто-проверка не сработала или API ключ не введен — отправляем уведомление админу с кнопкой активации в 1 клик
         if ADMIN_ID:
             try:
                 u_hash = hash_user_id(user_id)[:8]
@@ -212,7 +219,6 @@ async def process_admin_grant_prem(call: CallbackQuery):
             parse_mode="HTML",
         )
 
-        # Уведомляем пользователя
         try:
             u_lang = await async_get_user_language(target_uid)
             await call.bot.send_message(
@@ -224,9 +230,6 @@ async def process_admin_grant_prem(call: CallbackQuery):
             pass
     except ValueError:
         await call.answer("❌ Ошибка ID.", show_alert=True)
-
-
-
 
 
 def build_lang_keyboard() -> InlineKeyboardMarkup:
