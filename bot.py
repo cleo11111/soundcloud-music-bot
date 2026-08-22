@@ -1,6 +1,8 @@
 import asyncio
+from datetime import datetime, timedelta
+
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, FSInputFile
 
 
 async def setup_bot_commands(bot: Bot):
@@ -14,8 +16,9 @@ async def setup_bot_commands(bot: Bot):
     ]
     await bot.set_my_commands(commands)
 
-from config import BOT_TOKEN
-from services.db import async_init_db, async_clean_expired_history
+
+from config import BOT_TOKEN, ADMIN_ID
+from services.db import async_init_db, async_clean_expired_history, DB_PATH
 from handlers.start import router as start_router
 from handlers.inline import router as inline_router
 from handlers.inline_playlist import router as inline_playlist_router
@@ -46,16 +49,64 @@ async def periodic_cache_cleanup():
             log_error(f"⚠️ Ошибка фоновой очистки кэша: {e}")
 
 
+BACKUP_HOUR = 4  # Час отправки ежедневного бекапа БД (по времени сервера, 0-23)
+
+
+async def daily_db_backup(bot: Bot):
+    """Раз в сутки отправляет администратору файл базы данных как резервную копию.
+
+    Это дополнительный уровень защиты поверх Railway Volume: если Volume
+    когда-либо будет потерян, поврежден или случайно удален, у админа
+    всегда будет свежая копия БД не старше суток прямо в Telegram.
+    """
+    while True:
+        now = datetime.now()
+        next_run = now.replace(hour=BACKUP_HOUR, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        wait_seconds = (next_run - now).total_seconds()
+
+        await asyncio.sleep(wait_seconds)
+
+        try:
+            if not ADMIN_ID:
+                log_error("⚠️ Бекап БД пропущен: ADMIN_ID не настроен в .env!")
+                continue
+
+            if not DB_PATH.exists():
+                log_error(f"⚠️ Бекап БД пропущен: файл {DB_PATH} не найден!")
+                continue
+
+            backup_name = f"music_bot_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db"
+            doc = FSInputFile(DB_PATH, filename=backup_name)
+            await bot.send_document(
+                ADMIN_ID,
+                doc,
+                caption=(
+                    f"🗄 <b>Автоматический бекап БД</b>\n"
+                    f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                ),
+                parse_mode="HTML",
+            )
+            log_info("✅ Ежедневный бекап БД успешно отправлен администратору")
+        except Exception as e:
+            log_error(f"⚠️ Ошибка отправки бекапа БД: {e}")
+
+
 from services.downloader import check_ffmpeg_installed
+
 
 async def main():
     await async_init_db()
     check_ffmpeg_installed()
 
+    bot = Bot(BOT_TOKEN)
+
     # Запуск фоновой периодической очистки кэша оперативной памяти
     asyncio.create_task(periodic_cache_cleanup())
+    # Запуск фоновой ежедневной отправки бекапа БД администратору
+    asyncio.create_task(daily_db_backup(bot))
 
-    bot = Bot(BOT_TOKEN)
     dp = Dispatcher()
     await setup_bot_commands(bot)
 
