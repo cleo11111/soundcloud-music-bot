@@ -181,7 +181,7 @@ async def process_grant_premium_command(message: Message):
 
     parts = message.text.strip().split()
     if len(parts) < 2:
-        await message.answer("⚠️ Использование: <code>/grant_premium USER_ID [дней]</code>\nПример: <code>/grant_premium 1016803713 30</code>", parse_mode="HTML")
+        await message.answer("⚠️ Использование: <code>/grant_premium USER_ID [дней]</code>\nПример: <code>/grant_premium 123456789 30</code>", parse_mode="HTML")
         return
 
     try:
@@ -223,7 +223,7 @@ async def process_add_whitelist_command(message: Message):
 
     parts = message.text.strip().split()
     if len(parts) < 2:
-        await message.answer("⚠️ Использование: <code>/add_whitelist USER_ID</code>\nПример: <code>/add_whitelist 1016803713</code>", parse_mode="HTML")
+        await message.answer("⚠️ Использование: <code>/add_whitelist USER_ID</code>\nПример: <code>/add_whitelist 123456789</code>", parse_mode="HTML")
         return
 
     try:
