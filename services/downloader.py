@@ -8,7 +8,6 @@ import uuid
 
 from yt_dlp import YoutubeDL
 
-# Абсолютный путь, не зависит от рабочей директории запуска
 DOWNLOAD_DIR = Path(__file__).resolve().parent.parent / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True, mode=0o700)
 
@@ -16,7 +15,6 @@ ACTIVE_DOWNLOADS: set[int] = set()
 
 
 def check_disk_space(min_free_mb: int = 500) -> bool:
-    """Проверяет наличие свободного места на диске (минимум min_free_mb МБ)."""
     try:
         total, used, free = shutil.disk_usage(DOWNLOAD_DIR)
         free_mb = free / (1024 * 1024)
@@ -29,7 +27,6 @@ def check_disk_space(min_free_mb: int = 500) -> bool:
 
 
 def check_ffmpeg_installed() -> bool:
-    """Проверяет наличие утилиты ffmpeg в системе на старте."""
     ffmpeg_path = shutil.which("ffmpeg")
     if not ffmpeg_path:
         log_error("⚠️ [ВНИМАНИЕ] FFmpeg не найден на сервере! Скачивание и конвертация в MP3 не будут работать. Установите ffmpeg (например: sudo apt install ffmpeg).")
@@ -39,7 +36,6 @@ def check_ffmpeg_installed() -> bool:
 
 
 def start_user_download(user_id: int) -> bool:
-    """Пытается зафиксировать активное скачивание для пользователя. Возвращает False, если скачивание уже идет."""
     if not user_id:
         return True
     if user_id in ACTIVE_DOWNLOADS:
@@ -49,17 +45,15 @@ def start_user_download(user_id: int) -> bool:
 
 
 def finish_user_download(user_id: int):
-    """Освобождает статус скачивания для пользователя."""
     if user_id:
         ACTIVE_DOWNLOADS.discard(user_id)
 
 
 def _get_best_thumbnail_url(info: dict) -> str | None:
-    """Извлекает URL обложки максимального качества из info yt-dlp."""
-    # Пробуем получить из thumbnail напрямую
+    # Try to get the thumbnail directly
     thumb = info.get("thumbnail")
 
-    # Или из списка thumbnails — берём последний (обычно наибольший)
+    # Or from the thumbnails list — use the last one (usually the highest quality)
     thumbnails = info.get("thumbnails", [])
     if thumbnails:
         thumb = thumbnails[-1].get("url") or thumb
@@ -67,7 +61,7 @@ def _get_best_thumbnail_url(info: dict) -> str | None:
     if not thumb:
         return None
 
-    # SoundCloud: заменяем размер на максимальный (t500x500)
+    # SoundCloud: replace the size with the maximum (t500x500)
     for mini_tag in ["-large", "-t50x50", "-small", "-badge", "-t120x120", "-t200x200"]:
         if mini_tag in thumb:
             thumb = thumb.replace(mini_tag, "-t500x500")
@@ -77,12 +71,6 @@ def _get_best_thumbnail_url(info: dict) -> str | None:
 
 
 def _download_thumbnail(url: str, save_path: Path) -> tuple[Path | None, Path | None]:
-    """
-    Скачивает обложку по URL, конвертирует в гарантированный JPEG через PIL.
-    Возвращает (cover_path, thumb_path):
-    - cover_path: полноразмерная обложка (JPEG) для фото и MP3 ID3
-    - thumb_path: обжатая обложка 320x320 JPEG (<= 200KB) для аудиоплеера Telegram
-    """
     import io
     from PIL import Image
 
@@ -98,10 +86,10 @@ def _download_thumbnail(url: str, save_path: Path) -> tuple[Path | None, Path | 
         if img.mode != "RGB":
             img = img.convert("RGB")
 
-        # 1. Полноразмерная обложка (JPEG)
+        # Full-size cover (JPEG)
         img.save(save_path, "JPEG", quality=95)
 
-        # 2. Обжатая миниатюра 320x320 JPEG для кружка Telegram audio player
+        # 2. Compressed 320x320 JPEG thumbnail for the Telegram audio player
         thumb_path = save_path.parent / f"{save_path.stem}_thumb.jpg"
         thumb_img = img.copy()
         thumb_img.thumbnail((320, 320), Image.Resampling.LANCZOS)
@@ -120,7 +108,6 @@ def _download_thumbnail(url: str, save_path: Path) -> tuple[Path | None, Path | 
 
 
 def _embed_cover_in_mp3(mp3_path: Path, cover_path: Path, title: str, artist: str):
-    """Встраивает обложку и метаданные в MP3 через ID3-теги."""
     try:
         from mutagen.mp3 import MP3
         from mutagen.id3 import ID3, APIC, TIT2, TPE1, ID3NoHeaderError
@@ -130,13 +117,13 @@ def _embed_cover_in_mp3(mp3_path: Path, cover_path: Path, title: str, artist: st
         except ID3NoHeaderError:
             tags = ID3()
 
-        # Название и исполнитель
+        # Title and artist
         tags.delall("TIT2")
         tags.delall("TPE1")
         tags.add(TIT2(encoding=3, text=title))
         tags.add(TPE1(encoding=3, text=artist))
 
-        # Обложка
+        # Cover
         cover_data = cover_path.read_bytes()
         suffix = cover_path.suffix.lower()
         mime = "image/png" if suffix == ".png" else "image/jpeg"
@@ -145,7 +132,7 @@ def _embed_cover_in_mp3(mp3_path: Path, cover_path: Path, title: str, artist: st
         tags.add(APIC(
             encoding=3,
             mime=mime,
-            type=3,  # Cover (front)
+            type=3,  
             desc="Cover",
             data=cover_data,
         ))
@@ -157,7 +144,6 @@ def _embed_cover_in_mp3(mp3_path: Path, cover_path: Path, title: str, artist: st
 
 
 def _cleanup_intermediates(base_path: Path):
-    """Удаляет все промежуточные файлы с тем же именем (кроме .mp3)."""
     stem = base_path.stem
     parent = base_path.parent
     for f in parent.glob(f"{stem}.*"):
@@ -169,10 +155,6 @@ def _cleanup_intermediates(base_path: Path):
 
 
 def download_song(url: str) -> dict:
-    """
-    Скачивает трек, конвертирует в mp3, встраивает обложку.
-    Перед скачиванием проверяет доступное дисковое пространство и метаданные.
-    """
     if not check_disk_space(300):
         raise RuntimeError("ERR_DISK_FULL")
 
@@ -182,7 +164,7 @@ def download_song(url: str) -> dict:
 
     filename = "track"
 
-    # Предварительная проверка размера и длительности без скачивания байтов
+    # Pre-check file size and duration without downloading the actual data
     try:
         check_opts = {
             "quiet": True,
@@ -242,7 +224,7 @@ def download_song(url: str) -> dict:
                 raw_dur = info.get("duration")
                 metadata["duration"] = int(raw_dur) if raw_dur is not None else None
 
-                # Извлекаем дату публикации с SoundCloud
+                # Extract the publication date from SoundCloud
                 raw_date = (
                     info.get("release_date")
                     or info.get("upload_date")
@@ -269,18 +251,18 @@ def download_song(url: str) -> dict:
 
                 metadata["date"] = formatted_date
 
-                # Скачиваем и генерируем 320x320 JPEG миниатюру
+                # Download and generate a 320x320 JPEG thumbnail
                 thumb_url = _get_best_thumbnail_url(info)
                 if thumb_url:
                     cover_target = job_dir / f"{filename}_cover.jpg"
                     cover_path, thumb_path = _download_thumbnail(thumb_url, cover_target)
 
-                # Проверка 3: Проверяем целостность сгенерированного MP3 файла (существование и размер > 1 КБ)
+                # Verify the generated MP3 file integrity (exists and is larger than 1 KB)
                 if not mp3_path.exists() or mp3_path.stat().st_size < 1024:
                     _cleanup_intermediates(mp3_path)
                     raise FileNotFoundError("Сгенерированный MP3-файл отсутствует или поврежден (размер < 1 КБ).")
 
-                # Встраиваем обложку и метаданные в MP3
+                # Embed the cover and metadata into the MP3
                 if cover_path and cover_path.exists():
                     _embed_cover_in_mp3(mp3_path, cover_path, metadata["title"], metadata["artist"])
     finally:
@@ -298,7 +280,6 @@ def download_song(url: str) -> dict:
 
 
 async def async_download_song(url: str) -> dict:
-    """Асинхронная обёртка — не блокирует event loop."""
     return await asyncio.to_thread(download_song, url)
 
 
@@ -306,7 +287,6 @@ import time
 
 
 def cleanup_file(*file_paths: Path | None):
-    """Безопасно удаляет mp3 файлы, обложки, миниатюры и директории скачиваний внутри DOWNLOAD_DIR."""
     for file_path in file_paths:
         if not file_path:
             continue
@@ -314,14 +294,14 @@ def cleanup_file(*file_paths: Path | None):
         try:
             resolved_target = file_path.resolve()
             resolved_download_dir = DOWNLOAD_DIR.resolve()
-            # Запрет удаления/открытия любых файлов за пределами downloads/
+            # Prevent access to any files outside the downloads/ directory
             if not resolved_target.is_relative_to(resolved_download_dir):
                 log_error(f"⚠️ Попытка доступа к недопустимому пути вне downloads: {file_path}")
                 continue
         except Exception:
             pass
 
-        # Если передан путь к директории задания (job_* / pl_job_*)
+        # If a job directory path (job_* / pl_job_*) is provided
         if file_path.is_dir():
             try:
                 shutil.rmtree(file_path, ignore_errors=True)
@@ -331,7 +311,7 @@ def cleanup_file(*file_paths: Path | None):
 
         stem = file_path.stem
         parent = file_path.parent
-        # Удаляем все связанные файлы трека (mp3, cover, thumb) в downloads/
+        # Remove all related track files (mp3, cover, thumb) from downloads/
         for f in parent.glob(f"{stem}*"):
             try:
                 if f.is_file():
@@ -339,7 +319,7 @@ def cleanup_file(*file_paths: Path | None):
             except OSError:
                 pass
 
-        # Если родительская папка является временной директорией задания (job_* / pl_job_*)
+        # If the parent folder is a temporary job directory (job_* / pl_job_*)
         try:
             if parent != DOWNLOAD_DIR and parent.name.startswith(("job_", "pl_job_")):
                 if not any(parent.iterdir()):
@@ -349,7 +329,6 @@ def cleanup_file(*file_paths: Path | None):
 
 
 def sweep_stale_job_dirs(max_age_hours: int = 6):
-    """Очищает устаревшие временные папки скачиваний (job_* / pl_job_*) старше max_age_hours часов."""
     now = time.time()
     max_age_sec = max_age_hours * 3600
     cleaned_count = 0
@@ -373,14 +352,10 @@ def sweep_stale_job_dirs(max_age_hours: int = 6):
         log_debug(f"🧹 [Cleanup] Удалено {cleaned_count} устаревших/пустых папок скачивания в downloads/")
 
 
-# ─── Плейлисты ───────────────────────────────────────────────────────
+# Playlists
 
 
 def fetch_playlist_info(url: str) -> dict:
-    """
-    Извлекает метаданные плейлиста (название, автор, список треков)
-    через yt-dlp с extract_flat=True (не скачивая аудио).
-    """
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -408,16 +383,10 @@ def fetch_playlist_info(url: str) -> dict:
 
 
 async def async_fetch_playlist_info(url: str) -> dict:
-    """Асинхронная обёртка для fetch_playlist_info."""
     return await asyncio.to_thread(fetch_playlist_info, url)
 
 
 def download_playlist_as_zip(entries: list, playlist_title: str) -> dict:
-    """
-    Скачивает все треки из entries и упаковывает в ZIP-архив(ы).
-    Если общий размер превышает 45 МБ, разбивает на части.
-    Использует изолированную рабочую папку.
-    """
     import zipfile
 
     if not check_disk_space(500):
@@ -427,7 +396,7 @@ def download_playlist_as_zip(entries: list, playlist_title: str) -> dict:
     pl_job_dir = DOWNLOAD_DIR / f"pl_job_{job_id}"
     pl_job_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 
-    MAX_PART_BYTES = 45 * 1024 * 1024  # 45 MB
+    MAX_PART_BYTES = 45 * 1024 * 1024  
     downloaded = []
     zip_paths = []
 
@@ -493,11 +462,10 @@ def download_playlist_as_zip(entries: list, playlist_title: str) -> dict:
         raise
 
     finally:
-        # Чистим отдельные mp3 и вложенные файлы после упаковки
+        # Clean up individual MP3 files and related files after archiving
         for res in downloaded:
             cleanup_file(res["path"], res.get("cover_path"), res.get("thumb_path"))
 
 
 async def async_download_playlist_as_zip(entries: list, playlist_title: str) -> dict:
-    """Асинхронная обёртка для download_playlist_as_zip."""
     return await asyncio.to_thread(download_playlist_as_zip, entries, playlist_title)

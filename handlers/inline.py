@@ -12,7 +12,7 @@ from services.logger import log_debug, log_info, log_error
 router = Router()
 
 PER_PAGE = 25
-CACHE_TTL = 900  # 15 минут
+CACHE_TTL = 900
 
 SEARCH_CACHE = {}
 BAN_UNTIL = 0.0
@@ -30,7 +30,6 @@ YDL_OPTS_BASE = {
 
 
 def fetch_soundcloud(text: str, limit: int):
-    """Поиск треков SoundCloud через yt-dlp (синхронный)."""
     search_query = f"scsearch{limit}:{text}"
     with YoutubeDL(YDL_OPTS_BASE) as ydl:
         info = ydl.extract_info(search_query, download=False)
@@ -38,12 +37,10 @@ def fetch_soundcloud(text: str, limit: int):
 
 
 def _get_entry_url(entry):
-    """Извлекает URL трека для дедупликации."""
     return entry.get("url") or entry.get("webpage_url") or ""
 
 
 def _merge_entries(existing: list, new_entries: list) -> list:
-    """Объединяет результаты без дубликатов, сохраняя порядок."""
     seen_urls = set()
     merged = []
 
@@ -66,16 +63,15 @@ def _merge_entries(existing: list, new_entries: list) -> list:
 
 FETCH_SEMAPHORE = asyncio.Semaphore(5)
 USER_LAST_QUERY = {}
-USER_QUERY_TTL = 0.3  # Защита от спама инлайн-запросами
+USER_QUERY_TTL = 0.3  # Protection against spam from inline queries
 
 
 async def bg_fetch_pipeline(text: str):
-    """Фоновый конвейер: подгружает треки шагами с подконтрольным лимитом (до 1000 треков)."""
     global BAN_UNTIL
     if text not in SEARCH_CACHE or SEARCH_CACHE[text]["fetching"]:
         return
 
-    # Ограничение до 5 одновременных задач фонового конвейера
+    #  Limit to 5 concurrent background pipeline tasks
     if FETCH_SEMAPHORE.locked():
         log_debug(f"⚠️ [Конвейер] Сработало ограничение задач (max 5). Пропуск фоновой подгрузки для '{text}'")
         return
@@ -85,7 +81,6 @@ async def bg_fetch_pipeline(text: str):
             return
 
         SEARCH_CACHE[text]["fetching"] = True
-        # Разумный потолок 1000 треков (вместо 10 000) для предотвращения перегрузки
         target_steps = [100, 200, 500, 1000]
 
         try:
@@ -136,7 +131,6 @@ async def bg_fetch_pipeline(text: str):
 
 
 def clean_old_cache():
-    """Удаляет устаревшие записи кэша."""
     now = time.time()
     expired = [k for k, v in SEARCH_CACHE.items() if now - v["timestamp"] > CACHE_TTL]
     for k in expired:
@@ -151,7 +145,7 @@ async def inline_search(query: InlineQuery):
     if not text or len(text) < 2 or text.startswith("/playlist"):
         return
 
-    # Если в инлайн-поиск вставили прямую ссылку — предлагаем 1 клик для отправки и скачивания
+    # If a direct link is entered in inline search, offer 1-click download
     if text.startswith("http://") or text.startswith("https://") or "soundcloud.com" in text:
         raw_url = query.query.strip()
         if not (raw_url.startswith("http://") or raw_url.startswith("https://")):
@@ -178,7 +172,7 @@ async def inline_search(query: InlineQuery):
     try:
         clean_old_cache()
 
-        # Защита от rate-limit SoundCloud
+        # Protect against SoundCloud rate limits
         if time.time() < BAN_UNTIL:
             left_sec = int(BAN_UNTIL - time.time())
             lang = await async_get_user_language(query.from_user.id)
@@ -198,7 +192,7 @@ async def inline_search(query: InlineQuery):
             )
             return
 
-        # Первая выгрузка — берем 50 треков для быстрого ответа
+        # Initial fetch — get 50 tracks for a fast response
         if text not in SEARCH_CACHE:
             start_time = time.time()
             try:
@@ -211,10 +205,10 @@ async def inline_search(query: InlineQuery):
                     "timestamp": time.time(),
                     "entries": valid_entries,
                     "fetching": False,
-                    "has_reached_end": False,  # Всегда пробуем подгрузить ещё
+                    "has_reached_end": False,  # Try to load more
                 }
 
-                # Запуск фоновой дозагрузки
+                # Start background fetching
                 asyncio.create_task(bg_fetch_pipeline(text))
             except Exception as e:
                 err_str = str(e)
@@ -230,7 +224,7 @@ async def inline_search(query: InlineQuery):
 
         cache_info = SEARCH_CACHE[text]
 
-        # Ждём дозагрузки если скролл обогнал конвейер (до 20 сек)
+        # Wait for more results if scrolling gets ahead of the pipeline (up to 20 sec)
         if offset >= len(cache_info["entries"]) and (cache_info["fetching"] or not cache_info["has_reached_end"]):
             for _ in range(80):
                 await asyncio.sleep(0.25)
@@ -249,7 +243,7 @@ async def inline_search(query: InlineQuery):
             title = entry.get("title", "Неизвестный трек")
             uploader = entry.get("uploader", "SoundCloud")
 
-            # Обложка в высоком разрешении
+            # High-resolution cover
             thumbnails = entry.get("thumbnails", [])
             thumb_url = None
             if thumbnails:
@@ -276,7 +270,7 @@ async def inline_search(query: InlineQuery):
                 )
             )
 
-        # Пагинация — продолжаем пока есть данные или конвейер работает
+        # Pagination — continue while data is available or the pipeline is running
         has_more_in_memory = (offset + len(page_entries)) < len(all_entries)
         not_end = not cache_info["has_reached_end"]
         still_fetching = cache_info["fetching"]

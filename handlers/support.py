@@ -20,7 +20,6 @@ class SupportStates(StatesGroup):
 
 @router.message(Command("cancel"))
 async def cancel_fsm(message: Message, state: FSMContext):
-    """Отменяет текущий шаг ввода сообщений."""
     current_state = await state.get_state()
     if current_state is None:
         return
@@ -34,7 +33,6 @@ async def cancel_fsm(message: Message, state: FSMContext):
 @router.message(Command("support"))
 @router.message(Command("report"))
 async def process_support_command(message: Message, state: FSMContext):
-    """Обработчик команды /support или /report."""
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
     await state.set_state(SupportStates.waiting_for_user_message)
@@ -43,7 +41,6 @@ async def process_support_command(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "cmd_support")
 async def process_support_callback(call: CallbackQuery, state: FSMContext):
-    """Нажатие на кнопку '💬 Поддержка / Отзыв'."""
     user_id = call.from_user.id
     lang = await async_get_user_language(user_id)
     await state.set_state(SupportStates.waiting_for_user_message)
@@ -54,12 +51,11 @@ async def process_support_callback(call: CallbackQuery, state: FSMContext):
 import time
 
 SUPPORT_COOLDOWN = {}
-SUPPORT_COOLDOWN_SEC = 60  # Лимит: 1 обращение в 60 секунд (для предотвращения спама)
+SUPPORT_COOLDOWN_SEC = 60  # Limit 1 request every 60 seconds to prevent spam
 
 
 @router.message(SupportStates.waiting_for_user_message)
 async def process_user_support_message(message: Message, state: FSMContext):
-    """Принимает сообщение от пользователя и отправляет администратору."""
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
     u_hash = hash_user_id(user_id)[:8]
@@ -67,7 +63,7 @@ async def process_user_support_message(message: Message, state: FSMContext):
 
     await state.clear()
 
-    # Защита от спама обращениями к администратору (Rate Limiting)
+    # Rate limiting to prevent spam requests to the administrator
     now = time.time()
     last_sent = SUPPORT_COOLDOWN.get(user_id, 0)
     if user_id != ADMIN_ID and (now - last_sent < SUPPORT_COOLDOWN_SEC):
@@ -85,7 +81,6 @@ async def process_user_support_message(message: Message, state: FSMContext):
     import html
     safe_text = html.escape(text)
 
-    # Клавиатура для администратора для ответа в 1 клик
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✉️ Ответить пользователю", callback_data=f"reply_to_{user_id}")]
@@ -113,7 +108,6 @@ async def process_user_support_message(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("reply_to_"))
 async def process_admin_reply_callback(call: CallbackQuery, state: FSMContext):
-    """Администратор нажимает '✉️ Ответить пользователю'."""
     if call.from_user.id != ADMIN_ID:
         await call.answer("❌ Доступ запрещен.", show_alert=True)
         return
@@ -138,7 +132,6 @@ async def process_admin_reply_callback(call: CallbackQuery, state: FSMContext):
 
 @router.message(SupportStates.waiting_for_admin_reply)
 async def process_admin_send_reply(message: Message, state: FSMContext):
-    """Администратор отправляет текст ответа."""
     if message.from_user.id != ADMIN_ID:
         return
 
@@ -154,7 +147,6 @@ async def process_admin_send_reply(message: Message, state: FSMContext):
     safe_reply_text = html.escape(reply_text)
     await state.clear()
 
-    # Отправляем ответ пользователю АНОНИМНО от имени бота
     user_lang = await async_get_user_language(target_user_id)
     user_msg_text = get_text("user_received_reply", user_lang, text=safe_reply_text)
 
@@ -176,7 +168,6 @@ from services.db import async_set_user_premium
 
 @router.message(F.chat.type == "private", Command("grant_premium"))
 async def process_grant_premium_command(message: Message):
-    """Админ-команда для ручной выдачи премиум подписки: /grant_premium USER_ID [дней]"""
     if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
@@ -191,7 +182,7 @@ async def process_grant_premium_command(message: Message):
         await async_set_user_premium(target_uid, days=days)
         await message.answer(f"✅ 💎 Премиум подписка на {days} дней успешно выдана пользователю <code>{target_uid}</code>!", parse_mode="HTML")
 
-        # Уведомляем пользователя
+        # Notify the user
         try:
             u_lang = await async_get_user_language(target_uid)
             msg_text = get_text("premium_activated", u_lang, days=days)
@@ -204,7 +195,6 @@ async def process_grant_premium_command(message: Message):
 
 @router.message(F.chat.type == "private", Command("revoke_premium"))
 async def process_revoke_premium_command(message: Message):
-    """Админ-команда для снятия премиума и переключения на Бесплатный тариф: /revoke_premium [USER_ID]"""
     if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
@@ -218,7 +208,6 @@ async def process_revoke_premium_command(message: Message):
 @router.message(F.chat.type == "private", Command("add_whitelist"))
 @router.message(F.chat.type == "private", Command("whitelist_add"))
 async def process_add_whitelist_command(message: Message):
-    """Админ-команда для добавления пользователя в вечный WhiteList: /add_whitelist USER_ID"""
     if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
@@ -233,7 +222,7 @@ async def process_add_whitelist_command(message: Message):
         await async_set_user_whitelist(target_uid, is_whitelisted=True)
         await message.answer(f"⭐ Пользователь <code>{target_uid}</code> успешно добавлен в <b>WhiteList</b>!", parse_mode="HTML")
 
-        # Уведомляем пользователя
+        # Notify the user
         try:
             u_lang = await async_get_user_language(target_uid)
             await message.bot.send_message(
@@ -250,7 +239,6 @@ async def process_add_whitelist_command(message: Message):
 @router.message(F.chat.type == "private", Command("remove_whitelist"))
 @router.message(F.chat.type == "private", Command("whitelist_remove"))
 async def process_remove_whitelist_command(message: Message):
-    """Админ-команда для удаления пользователя из WhiteList: /remove_whitelist USER_ID"""
     if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
@@ -273,7 +261,6 @@ from services.downloader import finish_user_download
 
 @router.message(F.chat.type == "private", Command("reset_lock"))
 async def process_reset_lock_command(message: Message):
-    """Админ-команда для сброса зависшей блокировки скачивания: /reset_lock [USER_ID]"""
     if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 
@@ -289,7 +276,6 @@ from services.db import async_get_bot_stats
 
 @router.message(F.chat.type == "private", Command("stats"))
 async def process_stats_command(message: Message):
-    """Админ-команда для отображения статистики бота: /stats"""
     if message.from_user.id != ADMIN_ID or message.chat.type != "private":
         return
 

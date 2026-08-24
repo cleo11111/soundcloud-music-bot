@@ -7,19 +7,17 @@ from services.logger import log_info, log_error
 
 
 def get_tribute_pay_url(user_id: int) -> str:
-    """Возвращает прямую ссылку на оплату через Tribute."""
     if not TRIBUTE_LINK:
         return ""
 
-    # Если в ссылке уже есть параметры, добавляем user_id
+    # Add user_id if the link already contains parameters
     separator = "&" if "?" in TRIBUTE_LINK else "?"
     return f"{TRIBUTE_LINK}{separator}startapp_param={user_id}"
 
 
 def check_tribute_payment(user_id: int) -> bool:
-    """Проверяет статус оплаты подписки пользователя в Tribute API."""
     if not TRIBUTE_API_KEY:
-        # Если API-ключ не задан, возвращаем False
+        # Return False if the API key is not set
         return False
 
     query = urllib.parse.urlencode({"user_id": user_id})

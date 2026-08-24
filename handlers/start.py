@@ -21,7 +21,6 @@ router = Router()
 
 
 def build_start_keyboard(lang: str) -> InlineKeyboardMarkup:
-    """Строит инлайн-клавиатуру для главного меню."""
     kb = [
         [
             InlineKeyboardButton(
@@ -59,10 +58,9 @@ def build_start_keyboard(lang: str) -> InlineKeyboardMarkup:
 
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
-    """Обработчик команды /start."""
-    # Сбрасываем любое активное состояние FSM (например, ожидание сообщения
-    # для поддержки), чтобы /start всегда возвращал пользователя в чистое
-    # состояние, а не "застревал" в предыдущем сценарии.
+    # Clear any active FSM state (for example, waiting for a support message)
+    # so /start always returns the user to a clean state instead of getting
+    # stuck in the previous scenario
     await state.clear()
 
     user_id = message.from_user.id
@@ -77,9 +75,8 @@ async def start(message: Message, state: FSMContext):
 
 @router.message(Command("help"))
 async def process_help_command(message: Message, state: FSMContext):
-    """Обработчик команды /help — выводит справку по поиску и командам."""
-    # Аналогично /start — сбрасываем FSM-состояние, чтобы /help тоже
-    # выводил пользователя из "застрявших" сценариев (например, поддержки).
+    # Same as /start — clear the FSM state so /help also
+    # takes the user out of any stuck scenario (for example, support)
     await state.clear()
 
     user_id = message.from_user.id
@@ -93,7 +90,6 @@ async def process_help_command(message: Message, state: FSMContext):
 @router.message(Command("premium"))
 @router.callback_query(F.data == "cmd_premium")
 async def process_premium_command(event: Message | CallbackQuery):
-    """Показывает меню с информацией о премиуме и кнопкой оплаты через Tribute."""
     user_id = event.from_user.id
     lang = await async_get_user_language(user_id)
     status = await async_get_user_premium_status(user_id)
@@ -128,7 +124,6 @@ async def process_premium_command(event: Message | CallbackQuery):
 
 @router.callback_query(F.data == "create_tribute_invoice")
 async def process_create_tribute_invoice(call: CallbackQuery):
-    """Формирует ссылку на оплату через Tribute."""
     user_id = call.from_user.id
     lang = await async_get_user_language(user_id)
 
@@ -150,7 +145,6 @@ async def process_create_tribute_invoice(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("check_tribute_pay_"))
 async def process_check_tribute_pay(call: CallbackQuery):
-    """Проверяет статус оплаты в Tribute."""
     user_id = call.from_user.id
     lang = await async_get_user_language(user_id)
 
@@ -204,7 +198,6 @@ async def process_check_tribute_pay(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_grant_prem_"))
 async def process_admin_grant_prem(call: CallbackQuery):
-    """Ручное подтверждение оплаты администратором из уведомления в 1 клик."""
     if call.from_user.id != ADMIN_ID:
         return
 
@@ -233,7 +226,6 @@ async def process_admin_grant_prem(call: CallbackQuery):
 
 
 def build_lang_keyboard() -> InlineKeyboardMarkup:
-    """Строит клавиатуру выбора языка."""
     kb = [
         [
             InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_lang_ru"),
@@ -245,7 +237,6 @@ def build_lang_keyboard() -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "cmd_lang_select")
 async def process_lang_select(call: CallbackQuery):
-    """Показывает меню выбора языка."""
     user_id = call.from_user.id
     lang = await async_get_user_language(user_id)
     text = get_text("select_language", lang)
@@ -255,7 +246,6 @@ async def process_lang_select(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("set_lang_"))
 async def process_set_language(call: CallbackQuery):
-    """Сохраняет выбранный язык и обновляет главное меню."""
     new_lang = call.data.split("_")[-1]
     if new_lang not in ("ru", "en"):
         new_lang = "ru"

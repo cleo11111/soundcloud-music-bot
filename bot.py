@@ -6,7 +6,6 @@ from aiogram.types import BotCommand, FSInputFile
 
 
 async def setup_bot_commands(bot: Bot):
-    """Регистрирует список команд в меню Telegram."""
     commands = [
         BotCommand(command="start", description="Главное меню / Main menu"),
         BotCommand(command="history", description="История скачиваний / Download history"),
@@ -36,9 +35,8 @@ from services.logger import log_info, log_error
 
 
 async def periodic_cache_cleanup():
-    """Фоновая задача: каждые 10 минут очищает оперативные кэши, устаревшие папки и ротирует историю."""
     while True:
-        await asyncio.sleep(600)  # 10 минут
+        await asyncio.sleep(600)  # 10 minutes
         try:
             clean_inline_cache()
             clean_playlist_caches()
@@ -49,16 +47,10 @@ async def periodic_cache_cleanup():
             log_error(f"⚠️ Ошибка фоновой очистки кэша: {e}")
 
 
-BACKUP_HOUR = 4  # Час отправки ежедневного бекапа БД (по времени сервера, 0-23)
+BACKUP_HOUR = 4  # Daily database backup hour (server time, 0–23)
 
 
 async def daily_db_backup(bot: Bot):
-    """Раз в сутки отправляет администратору файл базы данных как резервную копию.
-
-    Это дополнительный уровень защиты поверх Railway Volume: если Volume
-    когда-либо будет потерян, поврежден или случайно удален, у админа
-    всегда будет свежая копия БД не старше суток прямо в Telegram.
-    """
     while True:
         now = datetime.now()
         next_run = now.replace(hour=BACKUP_HOUR, minute=0, second=0, microsecond=0)
@@ -102,18 +94,15 @@ async def main():
 
     bot = Bot(BOT_TOKEN)
 
-    # Запуск фоновой периодической очистки кэша оперативной памяти
+    # Start the background task for periodic RAM cache cleanup
     asyncio.create_task(periodic_cache_cleanup())
-    # Запуск фоновой ежедневной отправки бекапа БД администратору
+    # Start the background task for daily database backup delivery to the admin
     asyncio.create_task(daily_db_backup(bot))
 
     dp = Dispatcher()
     await setup_bot_commands(bot)
 
-    # Порядок важен:
-    #   inline_playlist (фильтр /playlist) → inline (catch-all) →
-    #   start → history → search → inline_playlist (сообщения/callback) →
-    #   download (catch-all для ссылок)
+   
     dp.include_router(inline_playlist_router)
     dp.include_router(inline_router)
     dp.include_router(start_router)

@@ -17,7 +17,6 @@ if not SECRET_SALT:
 
 
 def hash_user_id(user_id: int) -> str:
-    """Возвращает анонимизированный salted SHA256-хэш user_id."""
     if not user_id:
         return ""
     raw = f"{SECRET_SALT}_{user_id}".encode("utf-8")
@@ -25,7 +24,6 @@ def hash_user_id(user_id: int) -> str:
 
 
 def _get_connection() -> sqlite3.Connection:
-    """Возвращает новое соединение с кодировкой UTF-8, поддержкой row_factory и WAL-режимом."""
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
@@ -34,7 +32,6 @@ def _get_connection() -> sqlite3.Connection:
 
 
 def init_db():
-    """Создаёт таблицы базы данных SQLite с полной анонимизацией (только user_hash)."""
     with _get_connection() as conn:
         conn.execute(
             """
@@ -72,7 +69,7 @@ def init_db():
             """
         )
 
-        # Автоматическая миграция: удаление legacy сырого столбца user_id из таблицы users
+        # Automatic migration: remove legacy raw user_id column from the users table
         try:
             table_info = conn.execute("PRAGMA table_info(users)").fetchall()
             if any(col["name"] == "user_id" for col in table_info):
@@ -108,7 +105,7 @@ def init_db():
         except Exception as e:
             log_error(f"⚠️ Ошибка миграции таблицы users: {e}")
 
-        # Автоматическая миграция: удаление legacy сырого столбца user_id из таблицы history
+        # Automatic migration: remove legacy raw user_id column from the history table
         try:
             hist_info = conn.execute("PRAGMA table_info(history)").fetchall()
             if any(col["name"] == "user_id" for col in hist_info):
@@ -137,7 +134,7 @@ def init_db():
         except Exception as e:
             log_error(f"⚠️ Ошибка миграции таблицы history: {e}")
 
-        # Миграция новых колонок если база была создана раньше
+        # Migration of new columns in case the database was created earlier
         for col_sql in (
             "ALTER TABLE users ADD COLUMN is_premium INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN premium_expires_at DATETIME",
@@ -168,12 +165,10 @@ def init_db():
 
 
 async def async_init_db():
-    """Асинхронный вызов инициализации БД."""
     await asyncio.to_thread(init_db)
 
 
 def add_history_record(user_id: int, title: str, artist: str, platform: str = "SoundCloud"):
-    """Записывает скачанный трек в историю (под анонимным user_hash)."""
     if not user_id:
         return
 
@@ -192,7 +187,7 @@ def add_history_record(user_id: int, title: str, artist: str, platform: str = "S
                     (u_hash, title, artist, platform, now_iso),
                 )
             except sqlite3.IntegrityError:
-                # Запасной вариант для старых баз со строгим NOT NULL у legacy поля user_id
+                # Fallback for old databases with a strict NOT NULL on the legacy user_id field
                 conn.execute(
                     """
                     INSERT INTO history (user_hash, user_id, title, artist, platform, downloaded_at)
@@ -206,7 +201,6 @@ def add_history_record(user_id: int, title: str, artist: str, platform: str = "S
 
 
 async def async_add_history_record(user_id: int, title: str, artist: str, platform: str = "SoundCloud"):
-    """Асинхронная обёртка для записи в историю."""
     await asyncio.to_thread(add_history_record, user_id, title, artist, platform)
 
 
@@ -214,7 +208,6 @@ from services.locales import get_text
 
 
 def format_history_datetime(dt_str: str, lang: str = "ru") -> str:
-    """Форматирует строковую дату в красивое представление на нужном языке."""
     try:
         dt = datetime.fromisoformat(dt_str)
     except Exception:
@@ -236,7 +229,6 @@ def format_history_datetime(dt_str: str, lang: str = "ru") -> str:
 
 
 def get_user_history(user_id: int, limit: int = 20, lang: str = "ru") -> list[dict]:
-    """Возвращает до limit последних записей истории пользователя."""
     if not user_id:
         return []
 
@@ -269,12 +261,10 @@ def get_user_history(user_id: int, limit: int = 20, lang: str = "ru") -> list[di
 
 
 async def async_get_user_history(user_id: int, limit: int = 20, lang: str = "ru") -> list[dict]:
-    """Асинхронная обёртка для получения истории пользователя."""
     return await asyncio.to_thread(get_user_history, user_id, limit, lang)
 
 
 def clear_user_history(user_id: int) -> bool:
-    """Удаляет всю историю скачиваний пользователя из базы данных."""
     if not user_id:
         return False
     u_hash = hash_user_id(user_id)
@@ -289,7 +279,6 @@ def clear_user_history(user_id: int) -> bool:
 
 
 def clear_user_history_days(user_id: int, days: int = 7) -> bool:
-    """Удаляет историю скачиваний пользователя за последние N дней."""
     if not user_id:
         return False
     u_hash = hash_user_id(user_id)
@@ -308,12 +297,10 @@ def clear_user_history_days(user_id: int, days: int = 7) -> bool:
 
 
 async def async_clear_user_history_days(user_id: int, days: int = 7) -> bool:
-    """Асинхронное удаление истории скачиваний за последние N дней."""
     return await asyncio.to_thread(clear_user_history_days, user_id, days)
 
 
 def clean_expired_history(retention_days: int = 90):
-    """Автоматически удаляет записи истории старше retention_days дней."""
     cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
     try:
         with _get_connection() as conn:
@@ -324,17 +311,14 @@ def clean_expired_history(retention_days: int = 90):
 
 
 async def async_clean_expired_history(retention_days: int = 90):
-    """Асинхронный вызов автоматической ротации истории."""
     await asyncio.to_thread(clean_expired_history, retention_days)
 
 
 async def async_clear_user_history(user_id: int) -> bool:
-    """Асинхронная очистка истории пользователя."""
     return await asyncio.to_thread(clear_user_history, user_id)
 
 
 def get_user_language(user_id: int) -> str:
-    """Возвращает язык пользователя ('ru' или 'en'). По умолчанию 'ru'."""
     if not user_id:
         return "ru"
     u_hash = hash_user_id(user_id)
@@ -361,12 +345,10 @@ def get_user_language(user_id: int) -> str:
 
 
 async def async_get_user_language(user_id: int) -> str:
-    """Асинхронное получение языка пользователя."""
     return await asyncio.to_thread(get_user_language, user_id)
 
 
 def set_user_language(user_id: int, lang_code: str):
-    """Устанавливает язык пользователя."""
     if not user_id:
         return
     u_hash = hash_user_id(user_id)
@@ -396,7 +378,6 @@ def set_user_language(user_id: int, lang_code: str):
 
 
 async def async_set_user_language(user_id: int, lang_code: str):
-    """Асинхронная установка языка пользователя."""
     await asyncio.to_thread(set_user_language, user_id, lang_code)
 
 
@@ -405,7 +386,6 @@ import time
 
 
 def save_playlist_cache(cache_id: str, data: dict):
-    """Сохраняет кэш плейлиста в базу данных SQLite."""
     if not cache_id or not data:
         return
     data_str = json.dumps(data, ensure_ascii=False)
@@ -427,12 +407,10 @@ def save_playlist_cache(cache_id: str, data: dict):
 
 
 async def async_save_playlist_cache(cache_id: str, data: dict):
-    """Асинхронное сохранение кэша плейлиста."""
     await asyncio.to_thread(save_playlist_cache, cache_id, data)
 
 
 def get_playlist_cache(cache_id: str, ttl_seconds: int = 1800) -> dict | None:
-    """Извлекает кэш плейлиста из SQLite, если он не устарел."""
     if not cache_id:
         return None
     now = time.time()
@@ -456,12 +434,10 @@ def get_playlist_cache(cache_id: str, ttl_seconds: int = 1800) -> dict | None:
 
 
 async def async_get_playlist_cache(cache_id: str, ttl_seconds: int = 1800) -> dict | None:
-    """Асинхронное получение кэша плейлиста."""
     return await asyncio.to_thread(get_playlist_cache, cache_id, ttl_seconds)
 
 
 def delete_playlist_cache(cache_id: str):
-    """Удаляет запись кэша плейлиста из БД."""
     if not cache_id:
         return
     try:
@@ -473,12 +449,10 @@ def delete_playlist_cache(cache_id: str):
 
 
 async def async_delete_playlist_cache(cache_id: str):
-    """Асинхронное удаление кэша плейлиста."""
     await asyncio.to_thread(delete_playlist_cache, cache_id)
 
 
 def clean_expired_playlist_cache(ttl_seconds: int = 1800):
-    """Очищает все устаревшие записи кэша плейлистов из БД."""
     now = time.time()
     cutoff = now - ttl_seconds
     try:
@@ -490,16 +464,10 @@ def clean_expired_playlist_cache(ttl_seconds: int = 1800):
 
 
 async def async_clean_expired_playlist_cache(ttl_seconds: int = 1800):
-    """Асинхронная очистка устаревших кэшей плейлистов."""
     await asyncio.to_thread(clean_expired_playlist_cache, ttl_seconds)
 
 
-# =====================================================================
-#  ПРЕМИУМ И ДНЕВНЫЕ ЛИМИТЫ (FREE vs PREMIUM)
-# =====================================================================
-
 def get_user_premium_status(user_id: int) -> dict:
-    """Возвращает статус подписки и текущие дневные лимиты пользователя."""
     if not user_id:
         return {"is_premium": False, "expires_at": None, "daily_tracks": 0, "daily_playlists": 0}
 
@@ -529,7 +497,7 @@ def get_user_premium_status(user_id: int) -> dict:
                     "daily_playlists": row["daily_playlists_count"] or 0,
                 }
 
-            # Авто-сброс суточных счетчиков
+            # Auto-reset of daily counters
             if row["last_download_date"] != today_str:
                 conn.execute(
                     """
@@ -546,7 +514,7 @@ def get_user_premium_status(user_id: int) -> dict:
                 daily_tracks = row["daily_tracks_count"] or 0
                 daily_playlists = row["daily_playlists_count"] or 0
 
-            # Проверка срока действия подписки
+            # Check subscription expiration
             is_prem = bool(row["is_premium"])
             expires_at = row["premium_expires_at"]
 
@@ -554,7 +522,7 @@ def get_user_premium_status(user_id: int) -> dict:
                 try:
                     exp_dt = datetime.fromisoformat(expires_at)
                     if datetime.now() > exp_dt:
-                        # Подписка истекла
+                        # Subscription has expired
                         conn.execute("UPDATE users SET is_premium = 0 WHERE user_hash = ?", (u_hash,))
                         conn.commit()
                         is_prem = False
@@ -574,7 +542,6 @@ def get_user_premium_status(user_id: int) -> dict:
 
 
 def can_user_download_track(user_id: int) -> tuple[bool, str]:
-    """Проверяет возможность скачивания отдельного трека (Бесплатно: 40 треков в день)."""
     status = get_user_premium_status(user_id)
     if status["is_premium"]:
         return True, "premium"
@@ -584,7 +551,6 @@ def can_user_download_track(user_id: int) -> tuple[bool, str]:
 
 
 def can_user_download_playlist(user_id: int, track_count: int) -> tuple[bool, str]:
-    """Проверяет возможность скачивания плейлиста (Бесплатно: 3 плейлиста в день до 50 треков)."""
     status = get_user_premium_status(user_id)
     if status["is_premium"]:
         return True, "premium"
@@ -599,7 +565,6 @@ def can_user_download_playlist(user_id: int, track_count: int) -> tuple[bool, st
 
 
 def increment_user_track_count(user_id: int):
-    """Инкрементирует дневной счетчик скачанных треков."""
     if not user_id:
         return
     u_hash = hash_user_id(user_id)
@@ -620,7 +585,6 @@ def increment_user_track_count(user_id: int):
 
 
 def increment_user_playlist_count(user_id: int):
-    """Инкрементирует дневной счетчик скачанных плейлистов."""
     if not user_id:
         return
     u_hash = hash_user_id(user_id)
@@ -641,7 +605,6 @@ def increment_user_playlist_count(user_id: int):
 
 
 def set_user_premium(user_id: int, days: int = 30):
-    """Выдает пользователю премиум подписку на указанное число дней."""
     if not user_id:
         return
     u_hash = hash_user_id(user_id)
@@ -682,7 +645,6 @@ def set_user_premium(user_id: int, days: int = 30):
 
 
 def set_user_whitelist(user_id: int, is_whitelisted: bool = True):
-    """Добавляет или удаляет пользователя из вечного WhiteList."""
     if not user_id:
         return
     u_hash = hash_user_id(user_id)
@@ -701,7 +663,6 @@ def set_user_whitelist(user_id: int, is_whitelisted: bool = True):
 
 
 def get_whitelisted_users() -> list[str]:
-    """Возвращает список хешей всех пользователей из WhiteList."""
     try:
         with _get_connection() as conn:
             rows = conn.execute("SELECT user_hash FROM users WHERE is_whitelisted = 1").fetchall()
@@ -735,7 +696,6 @@ async def async_set_user_premium(user_id: int, days: int = 30):
 
 
 def ensure_user_exists(user_id: int, lang_code: str = "ru"):
-    """Создаёт пользователя в таблице users, если его ещё нет."""
     if not user_id:
         return
     u_hash = hash_user_id(user_id)
@@ -751,12 +711,10 @@ def ensure_user_exists(user_id: int, lang_code: str = "ru"):
 
 
 async def async_ensure_user_exists(user_id: int, lang_code: str = "ru"):
-    """Асинхронная регистрация пользователя в БД."""
     await asyncio.to_thread(ensure_user_exists, user_id, lang_code)
 
 
 def get_bot_stats() -> dict:
-    """Возвращает общую статистику бота из базы данных."""
     try:
         with _get_connection() as conn:
             total_users = conn.execute(
@@ -789,6 +747,6 @@ def get_bot_stats() -> dict:
 
 
 async def async_get_bot_stats() -> dict:
-    """Асинхронное получение статистики бота."""
+    """Asynchronous retrieval of bot statistics"""
     return await asyncio.to_thread(get_bot_stats)
 

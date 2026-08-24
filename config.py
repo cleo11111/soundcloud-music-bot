@@ -11,7 +11,6 @@ TRIBUTE_API_KEY = os.getenv("TRIBUTE_API_KEY", "")
 
 
 def verify_config():
-    """Checks that all required secrets are set"""
     missing = []
     if not BOT_TOKEN:
         missing.append("BOT_TOKEN")

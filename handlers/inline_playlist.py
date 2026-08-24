@@ -1,7 +1,3 @@
-"""
-Обработчики плейлистов: инлайн-поиск, прямые ссылки, выбор формата отправки.
-Отдельный файл, не затрагивающий основной inline.py.
-"""
 import asyncio
 import time
 import uuid
@@ -44,19 +40,16 @@ from services.logger import log_debug, log_info, log_error
 
 router = Router()
 
-# ─── Кэши ────────────────────────────────────────────────────────────
-
-# Кэш информации о плейлисте: cache_id → {url, title, uploader, entries, ...}
+# Playlist information cache: cache_id → {url, title, uploader, entries, ...}
 PLAYLIST_CACHE: dict[str, dict] = {}
 CACHE_TTL = 1800  # 30 мин
 
-# Кэш результатов инлайн-поиска плейлистов: запрос → {entries, timestamp}
+# Inline playlist search results cache: request → {entries, timestamp}
 SEARCH_CACHE: dict[str, dict] = {}
 SEARCH_CACHE_TTL = 900  # 15 мин
 
 
 def _clean_caches():
-    """Удаляет устаревшие записи из памяти и базы данных."""
     now = time.time()
     for store, ttl in [(PLAYLIST_CACHE, CACHE_TTL), (SEARCH_CACHE, SEARCH_CACHE_TTL)]:
         expired = [k for k, v in store.items() if now - v.get("timestamp", 0) > ttl]
@@ -72,7 +65,6 @@ def _store_playlist(
     track_count: int = 0,
     thumbnail: str | None = None,
 ) -> str:
-    """Сохраняет метаданные плейлиста в память и SQLite БД."""
     cache_id = uuid.uuid4().hex[:8]
     data = {
         "url": url,
@@ -88,7 +80,6 @@ def _store_playlist(
 
 
 def _get_cached_playlist(cache_id: str) -> dict | None:
-    """Извлекает плейлист из оперативной памяти или SQLite БД."""
     data = PLAYLIST_CACHE.get(cache_id)
     if data:
         return data
@@ -99,13 +90,12 @@ def _get_cached_playlist(cache_id: str) -> dict | None:
     return None
 
 
-# ─── Поиск плейлистов через SoundCloud API v2 ────────────────────────
+# Search playlists using SoundCloud API v2
 
 CLIENT_ID_CACHE = {"client_id": None, "timestamp": 0}
 
 
 def _get_soundcloud_client_id() -> str | None:
-    """Извлекает актуальный client_id с главной страницы SoundCloud."""
     import urllib.request
     import re
 
@@ -147,10 +137,6 @@ def _get_soundcloud_client_id() -> str | None:
 
 
 def _search_playlists_sc(query: str, max_items: int = 200) -> list:
-    """
-    Ищет плейлисты на SoundCloud через API v2 с пагинацией (next_href).
-    Возвращает список всех найденных плейлистов (до max_items).
-    """
     import urllib.request
     import urllib.parse
     import json
@@ -222,7 +208,6 @@ def _search_playlists_sc(query: str, max_items: int = 200) -> list:
 
 
 def pluralize_tracks(count: int, lang: str = "ru") -> str:
-    """Возвращает число и правильно просклоненное слово 'трек'."""
     if lang == "en":
         return f"{count} track" if count == 1 else f"{count} tracks"
 
@@ -239,10 +224,7 @@ def pluralize_tracks(count: int, lang: str = "ru") -> str:
     return f"{count} {form}"
 
 
-# =====================================================================
-#  INLINE QUERY — @бот /playlist <запрос>
-# =====================================================================
-
+# /playlist <request>
 
 @router.inline_query(F.query.startswith("/playlist "))
 async def inline_playlist_search(query: InlineQuery):
@@ -259,19 +241,16 @@ async def inline_playlist_search(query: InlineQuery):
     try:
         _clean_caches()
 
-        # Первый запрос — ищем
         if text not in SEARCH_CACHE:
             raw = await asyncio.to_thread(_search_playlists_sc, text, 200)
             SEARCH_CACHE[text] = {"entries": raw, "timestamp": time.time()}
 
         entries = SEARCH_CACHE[text]["entries"]
 
-        # Ничего не нашли
         if not entries:
             await query.answer([], cache_time=5, is_personal=False)
             return
 
-        # Пагинация
         per_page = 25
         page = entries[offset : offset + per_page]
 
@@ -282,11 +261,9 @@ async def inline_playlist_search(query: InlineQuery):
             uploader = entry.get("uploader", "SoundCloud")
             count = entry.get("playlist_count") or 0
 
-            # Обложка
             thumbnails = entry.get("thumbnails", [])
             thumb_url = thumbnails[-1].get("url") if thumbnails else None
 
-            # Запоминаем, чтобы не запрашивать повторно при выборе
             cache_id = _store_playlist(
                 url=pl_url,
                 title=title,
@@ -332,16 +309,7 @@ async def inline_playlist_search(query: InlineQuery):
         print(f"💥 [Inline Playlist Error] {e}")
 
 
-# =====================================================================
-#  ВЫБОР ИЗ ИНЛАЙНА — ловим сообщение 🎶PLAYLIST::id::url
-# =====================================================================
-
-
 async def _show_playlist_choice(message: Message, pl_url: str, cache_id: str):
-    """
-    Загружает полную информацию о плейлисте и показывает
-    клавиатуру «Архивом / По отдельности».
-    """
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
 
@@ -361,7 +329,7 @@ async def _show_playlist_choice(message: Message, pl_url: str, cache_id: str):
         uploader = info.get("uploader", "SoundCloud")
         track_count = info.get("track_count", 0)
 
-        # Обновляем кэш полной информацией в памяти и в SQLite БД
+        # Update the full playlist information in memory and SQLite
         playlist_data = {
             **cached,
             "url": pl_url,
@@ -412,7 +380,7 @@ async def _show_playlist_choice(message: Message, pl_url: str, cache_id: str):
             parse_mode="HTML",
         )
 
-        # Удаляем техническое сообщение с PLAYLIST:: текстом
+        # Delete the technical PLAYLIST:: message
         try:
             await message.delete()
         except Exception:
@@ -425,7 +393,6 @@ async def _show_playlist_choice(message: Message, pl_url: str, cache_id: str):
 
 @router.message(F.text.startswith("🎶PLAYLIST::"))
 async def handle_playlist_from_inline(message: Message):
-    """Перехватывает выбор плейлиста из инлайн-режима."""
     parts = message.text.split("::", 2)
     if len(parts) < 3:
         return
@@ -441,7 +408,6 @@ SYSTEM_PATHS = {"/discover", "/feed", "/you", "/upload", "/stream", "/search", "
 
 
 def is_valid_soundcloud_url(url: str) -> bool:
-    """Строго проверяет домен и путь адреса на принадлежность к публичному плейлисту SoundCloud."""
     try:
         parsed = urllib.parse.urlparse(url)
         host = (parsed.hostname or "").lower()
@@ -455,11 +421,6 @@ def is_valid_soundcloud_url(url: str) -> bool:
         return False
 
 
-# =====================================================================
-#  ПРЯМАЯ ССЫЛКА НА ПЛЕЙЛИСТ — soundcloud.com/.../sets/...
-# =====================================================================
-
-
 import re
 
 
@@ -467,7 +428,6 @@ import re
     F.text.contains("/sets/") | F.caption.contains("/sets/"),
 )
 async def handle_playlist_direct_link(message: Message):
-    """Обрабатывает прямую ссылку на плейлист SoundCloud."""
     raw_text = message.text or message.caption or ""
 
     match = re.search(r'https?://[^\s]+', raw_text)
@@ -485,14 +445,8 @@ async def handle_playlist_direct_link(message: Message):
     await _show_playlist_choice(message, url, cache_id)
 
 
-# =====================================================================
-#  CALLBACK — скачать архивом (ZIP)
-# =====================================================================
-
-
 @router.callback_query(F.data.startswith("pl_zip_"))
 async def handle_playlist_zip(call: CallbackQuery):
-    """Скачивает все треки плейлиста и отправляет ZIP-архивом."""
     cache_id = call.data[len("pl_zip_"):]
     user_id = call.from_user.id
     lang = await async_get_user_language(user_id)
@@ -506,7 +460,7 @@ async def handle_playlist_zip(call: CallbackQuery):
     title = cached.get("title", "Плейлист")
     total = len(entries)
 
-    # Проверка лимитов бесплатного тарифа на плейлисты
+    # Check free playlist download limits
     allowed, status_code = await async_can_user_download_playlist(user_id, total)
     if not allowed:
         if status_code == "playlist_tracks_over_limit":
@@ -550,7 +504,7 @@ async def handle_playlist_zip(call: CallbackQuery):
                 caption=f"📂 {title}{part_suffix}\n🎵 {pluralize_tracks(downloaded, lang)}",
             )
 
-        # Записываем одну запись плейлиста в историю и инкрементируем счетчик
+        # Add one playlist record to history and increment the counter
         uploader = cached.get("uploader") or "SoundCloud"
         await async_add_history_record(
             user_id=call.from_user.id,
@@ -580,10 +534,6 @@ async def handle_playlist_zip(call: CallbackQuery):
         delete_playlist_cache(cache_id)
 
 
-# =====================================================================
-#  CALLBACK — отправить по отдельности
-# =====================================================================
-
 
 @router.callback_query(F.data.startswith("pl_sep_"))
 async def handle_playlist_separate(call: CallbackQuery):
@@ -603,7 +553,7 @@ async def handle_playlist_separate(call: CallbackQuery):
     title = cached.get("title", "Плейлист")
     total = len(entries)
 
-    # Проверка лимитов бесплатного тарифа на плейлисты
+    # Check free playlist download limits
     allowed, status_code = await async_can_user_download_playlist(user_id, total)
     if not allowed:
         if status_code == "playlist_tracks_over_limit":
@@ -613,7 +563,7 @@ async def handle_playlist_separate(call: CallbackQuery):
         await call.answer(msg, show_alert=True)
         return
 
-    # Проверка на ограничение > 50 треков
+    # Check the 50-track limit
     if total > 50 or cached.get("track_count", 0) > 50:
         alert_msg = get_text("playlist_over_limit_alert", lang)
         await call.answer(alert_msg, show_alert=True)
@@ -630,7 +580,6 @@ async def handle_playlist_separate(call: CallbackQuery):
 
     downloaded_results = []
     try:
-        # 1. Скачиваем все треки
         for i, entry in enumerate(entries):
             url = entry.get("url") or entry.get("webpage_url")
             if not url:
@@ -643,7 +592,6 @@ async def handle_playlist_separate(call: CallbackQuery):
             except Exception as e:
                 print(f"⚠️ [Playlist sep] Ошибка скачивания трека {i + 1}: {e}")
 
-            # Обновляем прогресс каждые 2 трека или в конце
             if (i + 1) % 2 == 0 or i == total - 1:
                 try:
                     await progress.edit_text(
@@ -662,7 +610,6 @@ async def handle_playlist_separate(call: CallbackQuery):
             await progress.edit_text(get_text("err_playlist_sep_failed", lang, title=title))
             return
 
-        # 2. Отправляем ОДНУ общую обложку плейлиста в самом начале
         uploader = cached.get("uploader") or "SoundCloud"
         playlist_cover = None
         for res in downloaded_results:
@@ -678,7 +625,6 @@ async def handle_playlist_separate(call: CallbackQuery):
             except Exception as e:
                 log_error(f"⚠️ Ошибка отправки обложки плейлиста: {e}")
 
-        # 3. Отправляем все треки вместе (медиагруппами альбомов Telegram по 10 штук)
         chunk_size = 10
         for chunk_idx in range(0, len(downloaded_results), chunk_size):
             chunk = downloaded_results[chunk_idx : chunk_idx + chunk_size]
@@ -724,7 +670,6 @@ async def handle_playlist_separate(call: CallbackQuery):
                         except Exception:
                             pass
 
-        # 4. Записываем одну запись плейлиста в историю и инкрементируем счетчик
         uploader = cached.get("uploader") or "SoundCloud"
         await async_add_history_record(
             user_id=user_id,
@@ -749,7 +694,7 @@ async def handle_playlist_separate(call: CallbackQuery):
 
     finally:
         finish_user_download(user_id)
-        # Гарантированная очистка временных файлов
+        # Guaranteed cleanup of temporary files
         for res in downloaded_results:
             if res and res.get("path"):
                 cleanup_file(res["path"])

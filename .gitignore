@@ -1,18 +1,18 @@
-# Секреты и конфигурация
+# Secrets and configuration
 .env*
 !.env.example
 
-# Базы данных SQLite и файлы журнала (WAL)
+# SQLite databases and log files (WAL)
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 
-# Директории загрузок и логов
+# Download and log directories
 downloads/
 logs/
 
-# Кэш Python и виртуальные окружения
+# Python cache and virtual environments
 __pycache__/
 *.pyc
 *.pyo
@@ -22,16 +22,16 @@ venv/
 env/
 ENV/
 
-# Редакторы кода и IDE
+# Code editors and IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Операционная система
+# Operating system
 .DS_Store
 Thumbs.db
 
-# Тесты и типизация
+# Tests and type checking
 .pytest_cache/
 .mypy_cache/

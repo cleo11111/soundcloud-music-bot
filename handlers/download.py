@@ -50,17 +50,14 @@ async def _process_download_url(message: Message, url: str):
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
 
-    # Строго проверяем, что домен принадлежит SoundCloud
     if not is_valid_soundcloud_url(url):
         if message.chat.type == "private":
             await message.answer(get_text("only_soundcloud", lang))
         return
 
-    # Плейлисты SoundCloud обрабатываются в inline_playlist.py
     if "/sets/" in url:
         return
 
-    # Проверка дневного лимита скачиваний (Бесплатно: 20 треков в день)
     allowed, status_code = await async_can_user_download_track(user_id)
     if not allowed:
         kb = InlineKeyboardMarkup(
@@ -97,7 +94,6 @@ async def _process_download_url(message: Message, url: str):
         thumb_path = result.get("thumb_path") or cover_path
         thumbnail = FSInputFile(thumb_path) if (thumb_path and thumb_path.exists()) else None
 
-        # Если есть обложка — отправляем фото с инфой под ним
         if cover_path and cover_path.exists():
             caption = format_cover_caption(
                 title=result["title"],
@@ -107,7 +103,6 @@ async def _process_download_url(message: Message, url: str):
             )
             await message.answer_photo(FSInputFile(cover_path), caption=caption)
 
-        # Отправляем аудио с 320x320 JPEG миниатюрой
         await message.answer_audio(
             audio,
             title=result["title"],
@@ -118,7 +113,6 @@ async def _process_download_url(message: Message, url: str):
 
         platform = "SoundCloud"
 
-        # Записываем в историю и инкрементируем суточный счетчик
         await async_add_history_record(
             user_id=user_id,
             title=result["title"],
@@ -127,7 +121,6 @@ async def _process_download_url(message: Message, url: str):
         )
         await async_increment_user_track_count(user_id)
 
-        # Удаляем сообщение пользователю со ссылкой/командой
         try:
             await message.delete()
         except Exception:
@@ -176,7 +169,6 @@ async def _process_download_url(message: Message, url: str):
 
 @router.message(F.text.contains("soundcloud.com") | F.text.startswith("http") | F.caption.contains("soundcloud.com"))
 async def download(message: Message):
-    """Скачивание трека по прямой ссылке SoundCloud (в любых чатах и ЛС)."""
     raw_text = message.text or message.caption or ""
     match = re.search(r'https?://[^\s]+', raw_text)
     if not match:

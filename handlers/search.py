@@ -18,13 +18,12 @@ from services.logger import log_debug
 
 router = Router()
 
-# Хранилище результатов поиска в памяти (user_id -> {"query": str, "tracks": list, "timestamp": float})
+# Storage for search results in memory (user_id -> {"query": str, "tracks": list, "timestamp": float})
 SEARCH_CACHE = {}
-CACHE_TTL = 1800  # 30 минут
+CACHE_TTL = 1800  # 30 minutes
 
 
 def clean_old_search_cache():
-    """Очищает результаты поиска в памяти старше 30 минут."""
     now = time.time()
     expired = [k for k, v in SEARCH_CACHE.items() if isinstance(v, dict) and now - v.get("timestamp", 0) > CACHE_TTL]
     for k in expired:
@@ -37,7 +36,6 @@ PER_PAGE = 5
 
 
 def fetch_all_soundcloud(text: str, limit: int = 50):
-    """Поиск треков на SoundCloud через yt-dlp."""
     search_query = f"scsearch{limit}:{text}"
     ydl_opts = {
         "quiet": True,
@@ -52,7 +50,6 @@ def fetch_all_soundcloud(text: str, limit: int = 50):
 
 
 def build_search_keyboard(user_id: int, page: int = 0):
-    """Строит клавиатуру с кнопками выбора треков и навигации по страницам."""
     tracks = SEARCH_CACHE.get(user_id, {}).get("tracks", [])
     total_tracks = len(tracks)
     max_pages = max(1, (total_tracks + PER_PAGE - 1) // PER_PAGE)
@@ -63,7 +60,7 @@ def build_search_keyboard(user_id: int, page: int = 0):
 
     kb = []
 
-    # Кнопки выбора конкретного трека (1..5)
+    # Buttons for selecting a specific track (1..5)
     item_buttons = []
     for i in range(len(current_tracks)):
         global_idx = start_idx + i
@@ -73,7 +70,7 @@ def build_search_keyboard(user_id: int, page: int = 0):
     if item_buttons:
         kb.append(item_buttons)
 
-    # Кнопки навигации
+    # Navigation buttons
     nav_buttons = []
     if page > 0:
         nav_buttons.append(
@@ -95,7 +92,6 @@ def build_search_keyboard(user_id: int, page: int = 0):
 
 
 def format_page_text(query_text: str, tracks: list, page: int = 0):
-    """Форматирует текст страницы с результатами поиска."""
     start_idx = page * PER_PAGE
     end_idx = start_idx + PER_PAGE
     current_tracks = tracks[start_idx:end_idx]
@@ -114,7 +110,6 @@ def format_page_text(query_text: str, tracks: list, page: int = 0):
 
 @router.message(F.chat.type == "private", F.text & ~F.text.startswith("http") & ~F.text.startswith("/"))
 async def process_text_prompt(message: Message):
-    """Если пользователь пишет обычный текст в ЛС — просим скинуть ссылку или воспользоваться кнопками."""
     user_id = message.from_user.id
     lang = await async_get_user_language(user_id)
     text = get_text("text_prompt", lang)
@@ -124,7 +119,6 @@ async def process_text_prompt(message: Message):
 
 @router.callback_query(F.data.startswith("page_"))
 async def process_page_change(call: CallbackQuery):
-    """Переключение страниц в результатах поиска."""
     page = int(call.data.split("_")[1])
     user_id = call.from_user.id
     lang = await async_get_user_language(user_id)
@@ -145,13 +139,11 @@ async def process_page_change(call: CallbackQuery):
 
 @router.callback_query(F.data == "ignore")
 async def process_ignore(call: CallbackQuery):
-    """Игнорируем нажатие на кнопку-счётчик страниц."""
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("dl_"))
 async def process_download_track(call: CallbackQuery):
-    """Скачивание выбранного трека из результатов поиска."""
     track_idx = int(call.data.split("_")[1])
     user_id = call.from_user.id
     lang = await async_get_user_language(user_id)
@@ -198,7 +190,7 @@ async def process_download_track(call: CallbackQuery):
         thumb_path = result.get("thumb_path") or cover_path
         thumbnail = FSInputFile(thumb_path) if (thumb_path and thumb_path.exists()) else None
 
-        # Если есть обложка — отправляем фото с инфой под ним
+        # If a cover is available, send the image with information below it
         if cover_path and cover_path.exists():
             caption = format_cover_caption(
                 title=result["title"],
@@ -208,7 +200,7 @@ async def process_download_track(call: CallbackQuery):
             )
             await call.message.answer_photo(FSInputFile(cover_path), caption=caption)
 
-        # Отправляем аудио с 320x320 JPEG миниатюрой
+        # Send audio with a 320x320 JPEG thumbnail
         await call.message.answer_audio(
             audio,
             title=result["title"],
@@ -217,7 +209,7 @@ async def process_download_track(call: CallbackQuery):
             thumbnail=thumbnail,
         )
 
-        # Записываем в историю
+        # Add the track to history
         await async_add_history_record(
             user_id=user_id,
             title=result["title"],

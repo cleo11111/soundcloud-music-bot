@@ -1,5 +1,5 @@
 """
-Локализация текстовых сообщений и кнопок (Русский / Английский).
+Localization of text messages and buttons (Russian / English)
 """
 
 MESSAGES = {
@@ -231,7 +231,6 @@ MESSAGES = {
 
 
 def get_text(key: str, lang: str = "ru", **kwargs) -> str:
-    """Возвращает локализованную строку с подстановкой параметров."""
     lang_dict = MESSAGES.get(lang, MESSAGES["ru"])
     text = lang_dict.get(key, MESSAGES["ru"].get(key, ""))
     if kwargs:
@@ -240,7 +239,6 @@ def get_text(key: str, lang: str = "ru", **kwargs) -> str:
 
 
 def format_cover_caption(title: str, artist: str, date: str | None = None, lang: str = "ru") -> str:
-    """Форматирует подпись под обложкой трека."""
     lines = [
         get_text("cover_track", lang, title=title),
         get_text("cover_artist", lang, artist=artist),
