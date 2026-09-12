@@ -63,7 +63,6 @@ async def process_user_support_message(message: Message, state: FSMContext):
 
     await state.clear()
 
-    # Rate limiting to prevent spam requests to the administrator
     now = time.time()
     last_sent = SUPPORT_COOLDOWN.get(user_id, 0)
     if user_id != ADMIN_ID and (now - last_sent < SUPPORT_COOLDOWN_SEC):
@@ -182,7 +181,6 @@ async def process_grant_premium_command(message: Message):
         await async_set_user_premium(target_uid, days=days)
         await message.answer(f"✅ 💎 Премиум подписка на {days} дней успешно выдана пользователю <code>{target_uid}</code>!", parse_mode="HTML")
 
-        # Notify the user
         try:
             u_lang = await async_get_user_language(target_uid)
             msg_text = get_text("premium_activated", u_lang, days=days)
@@ -222,7 +220,6 @@ async def process_add_whitelist_command(message: Message):
         await async_set_user_whitelist(target_uid, is_whitelisted=True)
         await message.answer(f"⭐ Пользователь <code>{target_uid}</code> успешно добавлен в <b>WhiteList</b>!", parse_mode="HTML")
 
-        # Notify the user
         try:
             u_lang = await async_get_user_language(target_uid)
             await message.bot.send_message(
@@ -289,3 +286,47 @@ async def process_stats_command(message: Message):
     )
     await message.answer(stats_text, parse_mode="HTML")
 
+
+import shutil
+from services.db import DB_PATH
+
+
+class RestoreDBStates(StatesGroup):
+    waiting_for_db_file = State()
+
+
+@router.message(F.chat.type == "private", Command("restore_db"))
+async def process_restore_db_command(message: Message, state: FSMContext):
+    """Временная админ-команда: запрашивает файл .db для восстановления БД из бекапа."""
+    if message.from_user.id != ADMIN_ID:
+        return
+    await state.set_state(RestoreDBStates.waiting_for_db_file)
+    await message.answer(
+        "📥 Пришлите файл <code>.db</code> (бекап базы данных) для восстановления.\n"
+        "Для отмены отправьте /cancel",
+        parse_mode="HTML",
+    )
+
+
+@router.message(F.chat.type == "private", RestoreDBStates.waiting_for_db_file, F.document)
+async def process_restore_db_file(message: Message, state: FSMContext):
+    """Принимает файл и заменяет текущую БД, сделав бекап старой версии на всякий случай."""
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    await state.clear()
+
+    try:
+        if DB_PATH.exists():
+            safety_backup = DB_PATH.with_name(f"{DB_PATH.stem}_before_restore.db")
+            shutil.copy(DB_PATH, safety_backup)
+
+        file_info = await message.bot.get_file(message.document.file_id)
+        await message.bot.download_file(file_info.file_path, destination=str(DB_PATH))
+
+        await message.answer(
+            f"✅ База данных успешно восстановлена из файла <code>{message.document.file_name}</code>!",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        await message.answer(f"❌ Ошибка восстановления БД: {e}")
